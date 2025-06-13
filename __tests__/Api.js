@@ -64,6 +64,16 @@ afterAll(async () => {
       }
     }
 
+    // Clean up: delete all areas photos in shared storage
+    const freshAreasRes = await request(baseURL).get('/areas').set('Authorization', `Bearer ${tempPrimaryToken}`)
+    for (area of freshAreasRes.body.areas) {
+      for (const photo of area.photos) {
+        const resp = await request(baseURL)
+          .delete(`/photo/${area.hash}/${photo.name}`)
+          .set('Authorization', `Bearer ${tempPrimaryToken}`)
+      }
+    }
+
     //logout
     await request(baseURL).post('/oauth/logout').set('Authorization', `Bearer ${tempPrimaryToken}`)
   } catch (err) {
@@ -168,63 +178,123 @@ describe('Areas endpoints', () => {
 })
 
 describe('Images endpoints', () => {
-  const exampleArea = 'a29df92da842291c1391aaf83496136d1bb589f1688cc49cc188bc810c681a53'
-  const exampleFile = 'image1.jpg'
+  const exampleFile = 'image.jpg'
+  const noGeoData = 'invalid-image.jpg'
+  const invalidFile = 'image.zip'
   const fixturePath = path.join(__dirname, 'fixtures', 'image.jpg')
+  const noGeoDataFixturePath = path.join(__dirname, 'fixtures', 'invalid-image.jpg')
+  const invalidFileFixturePath = path.join(__dirname, 'fixtures', 'image.zip')
+
+  test('POST /photo/:area/upload - happy path', async () => {
+    const areaHash = areas[0].hash
+
+    const res = await request(baseURL)
+      .post(`/photo/${areaHash}/upload`)
+      .set('Authorization', `Bearer ${secondaryToken}`)
+      .field('note', 'Test upload')
+      .field('filename', exampleFile)
+      .attach('file', fixturePath)
+
+    expect(res.status).toBe(200)
+    expect(res.body).toHaveProperty('message', 'Image uploaded successfull')
+  })
+
+  test('POST /photo/:area/upload - double upload returns error', async () => {
+    const areaHash = areas[0].hash
+
+    const res = await request(baseURL)
+      .post(`/photo/${areaHash}/upload`)
+      .set('Authorization', `Bearer ${secondaryToken}`)
+      .field('note', 'Test upload')
+      .field('filename', exampleFile)
+      .attach('file', fixturePath)
+
+    expect(res.status).toBe(500)
+    expect(res.body).toHaveProperty('error', 'file_exist_error')
+  })
+
+  test('POST /photo/:area/upload - missing geodata', async () => {
+    const areaHash = areas[0].hash
+
+    const res = await request(baseURL)
+      .post(`/photo/${areaHash}/upload`)
+      .set('Authorization', `Bearer ${secondaryToken}`)
+      .field('note', 'Test upload')
+      .field('filename', noGeoData)
+      .attach('file', noGeoDataFixturePath)
+
+    expect(res.status).toBe(400)
+    expect(res.body).toHaveProperty('error', 'file_error')
+  })
+
+  test('POST /photo/:area/upload - invalid file', async () => {
+    const areaHash = areas[0].hash
+
+    const res = await request(baseURL)
+      .post(`/photo/${areaHash}/upload`)
+      .set('Authorization', `Bearer ${secondaryToken}`)
+      .field('note', 'Test upload')
+      .field('filename', invalidFile)
+      .attach('file', invalidFileFixturePath)
+
+    expect(res.status).toBe(400)
+    expect(res.body).toHaveProperty('error', 'file_error')
+  })
 
   test('GET /photo/:area/:filename - happy path', async () => {
+    const areaHash = areas[0].hash
+
     const res = await request(baseURL)
-      .get(`/photo/${exampleArea}/${exampleFile}`)
+      .get(`/photo/${areaHash}/${exampleFile}`)
       .set('Authorization', `Bearer ${primaryToken}`)
     expect(res.status).toBe(200)
     expect(res.headers['content-type']).toBe('image/jpeg')
   })
 
   test('GET /photo/:area/:filename - not found returns 404', async () => {
+    const areaHash = areas[0].hash
+
     const res = await request(baseURL)
-      .get(`/photo/${exampleArea}/nonexistent.jpg`)
+      .get(`/photo/${areaHash}/nonexistent.jpg`)
       .set('Authorization', `Bearer ${primaryToken}`)
     expect(res.status).toBe(404)
     expect(res.body).toHaveProperty('error', 'not_found')
   })
 
   test('DELETE /photo/:area/:filename - unauthorized for secondary', async () => {
+    const areaHash = areas[0].hash
+
     const res = await request(baseURL)
-      .delete(`/photo/${exampleArea}/${exampleFile}`)
+      .delete(`/photo/${areaHash}/${exampleFile}`)
       .set('Authorization', `Bearer ${secondaryToken}`)
     expect(res.status).toBe(401)
   })
 
   test('DELETE /photo/:area/:filename - happy path', async () => {
+    const areaHash = areas[0].hash
+
     const res = await request(baseURL)
-      .delete(`/photo/${exampleArea}/${exampleFile}`)
+      .delete(`/photo/${areaHash}/${exampleFile}`)
       .set('Authorization', `Bearer ${primaryToken}`)
     expect(res.status).toBe(200)
     expect(res.body).toHaveProperty('message', 'Image deleted successfully')
   })
 
   test('GET /photo/:area/thumb/:filename - happy path', async () => {
+    const areaHash = areas[0].hash
+
     const res = await request(baseURL)
-      .get(`/photo/${exampleArea}/thumb/${exampleFile}`)
+      .get(`/photo/${areaHash}/thumb/${exampleFile}`)
       .set('Authorization', `Bearer ${primaryToken}`)
     expect(res.status).toBe(200)
     expect(res.headers['content-type']).toBe('image/jpeg')
   })
 
-  test('POST /photo/:area/upload - happy path', async () => {
-    const res = await request(baseURL)
-      .post(`/photo/${exampleArea}/upload`)
-      .set('Authorization', `Bearer ${secondaryToken}`)
-      .field('note', 'Test upload')
-      .field('filename', exampleFile)
-      .attach('file', fixturePath)
-    expect(res.status).toBe(200)
-    expect(res.body).toHaveProperty('message', 'Image uploaded successfully')
-  })
-
   test('POST /photo/:area/upload - missing file returns 400', async () => {
+    const areaHash = areas[0].hash
+
     const res = await request(baseURL)
-      .post(`/photo/${exampleArea}/upload`)
+      .post(`/photo/${areaHash}/upload`)
       .set('Authorization', `Bearer ${secondaryToken}`)
       .field('note', 'No file')
       .field('filename', exampleFile)
